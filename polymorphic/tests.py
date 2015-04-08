@@ -67,45 +67,13 @@ class ModelX(Base):
 class ModelY(Base):
     field_y = models.CharField(max_length=10)
 
-if django.VERSION[:2] > (1, 6):
-    class Enhance_Plain(models.Model):
-        field_p = models.CharField(max_length=10)
-    class Enhance_Base(ShowFieldTypeAndContent, PolymorphicModel):
-        base_id = models.AutoField(primary_key=True)
-        field_b = models.CharField(max_length=10)
-    class Enhance_Inherit(Enhance_Base, Enhance_Plain):
-        field_i = models.CharField(max_length=10)
-
-    class DiamondBase(models.Model):
-        field_b = models.CharField(max_length=10)
-    class DiamondX(DiamondBase):
-        x_id = models.AutoField(primary_key=True)
-        field_x = models.CharField(max_length=10)
-    class DiamondY(DiamondBase):
-        y_id = models.AutoField(primary_key=True)
-        field_y = models.CharField(max_length=10)
-    class DiamondXY(DiamondBase):
-        xy_id = models.AutoField(primary_key=True)
-        field_x = models.CharField(max_length=10)
-        field_y = models.CharField(max_length=10)
-else:
-    class Enhance_Plain(models.Model):
-        field_p = models.CharField(max_length=10)
-    class Enhance_Base(ShowFieldTypeAndContent, PolymorphicModel):
-        field_b = models.CharField(max_length=10)
-    class Enhance_Inherit(Enhance_Base, Enhance_Plain):
-        field_i = models.CharField(max_length=10)
-
-    class DiamondBase(models.Model):
-        field_b = models.CharField(max_length=10)
-    class DiamondX(DiamondBase):
-        x_id = models.AutoField(primary_key=True)
-        field_x = models.CharField(max_length=10)
-    class DiamondY(DiamondBase):
-        y_id = models.AutoField(primary_key=True)
-        field_y = models.CharField(max_length=10)
-    class DiamondXY(DiamondX, DiamondY):
-        xy_id = models.AutoField(primary_key=True)
+class Enhance_Plain(models.Model):
+    field_p = models.CharField(max_length=10)
+class Enhance_Base(ShowFieldTypeAndContent, PolymorphicModel):
+    base_id = models.AutoField(primary_key=True)
+    field_b = models.CharField(max_length=10)
+class Enhance_Inherit(Enhance_Base, Enhance_Plain):
+    field_i = models.CharField(max_length=10)
 
 class RelationBase(ShowFieldTypeAndContent, PolymorphicModel):
     field_base = models.CharField(max_length=10)
@@ -283,27 +251,17 @@ class RelatedNameClash(ShowFieldType, PolymorphicModel):
 class TestParentLinkAndRelatedName(ModelShow1_plain):
     superclass = models.OneToOneField(ModelShow1_plain, parent_link=True, related_name='related_name_subclass')
 
+class CustomPkBase(ShowFieldTypeAndContent, PolymorphicModel):
+    b = models.CharField(max_length=1)
+class CustomPkInherit(CustomPkBase):
+    custom_id = models.AutoField(primary_key=True)
+    i = models.CharField(max_length=1)
+
 
 class PolymorphicTests(TestCase):
     """
     The test suite
     """
-    def test_diamond_inheritance(self):
-        if django.VERSION[:2] > (1, 6):
-            print('')
-            print("# Django 1.7 doesn't allow multiple inheritance when two id fields exist. https://docs.djangoproject.com/en/dev/topics/db/models/#multiple-inheritance")
-
-        # Django diamond problem
-        # https://code.djangoproject.com/ticket/10808
-        o1 = DiamondXY.objects.create(field_b='b', field_x='x', field_y='y')
-        o2 = DiamondXY.objects.get()
-
-        if o2.field_b != 'b':
-            print('')
-            print('# known django model inheritance diamond problem detected')
-            print('DiamondXY fields 1: field_b "{0}", field_x "{1}", field_y "{2}"'.format(o1.field_b, o1.field_x, o1.field_y))
-            print('DiamondXY fields 2: field_b "{0}", field_x "{1}", field_y "{2}"'.format(o2.field_b, o2.field_x, o2.field_y))
-
 
     def test_annotate_aggregate_order(self):
         # create a blog of type BlogA
@@ -408,18 +366,14 @@ class PolymorphicTests(TestCase):
   <UUIDArtProject: uuid_primary_key (UUIDField/pk), topic (CharField) "Sculpting with Tim", artist (CharField) "T. Turner">,
   <UUIDResearchProject: uuid_primary_key (UUIDField/pk), topic (CharField) "Swallow Aerodynamics", supervisor (CharField) "Dr. Winter"> ]"""
         self.assertEqual(res, res_exp)
-        #if (a.pk!= uuid.UUID or c.pk!= uuid.UUID):
-        #    print()
-        #    print('# known inconstency with custom primary key field detected (django problem?)')
 
         a = UUIDPlainA.objects.create(field1='A1')
         b = UUIDPlainB.objects.create(field1='B1', field2='B2')
         c = UUIDPlainC.objects.create(field1='C1', field2='C2', field3='C3')
         qs = UUIDPlainA.objects.all()
-        if a.pk!= uuid.UUID or c.pk!= uuid.UUID:
-            print('')
-            print('# known type inconstency with custom primary key field detected (django problem?)')
-
+        # Test that primary key values are valid UUIDs
+        self.assertEqual(uuid.UUID("urn:uuid:%s" % a.pk, version=1), a.pk)
+        self.assertEqual(uuid.UUID("urn:uuid:%s" % c.pk, version=1), c.pk)
 
     def create_model2abcd(self):
         """
@@ -505,6 +459,29 @@ class PolymorphicTests(TestCase):
         self.assertEqual(show_base_manager(One2OneRelatingModel), "<class 'polymorphic.manager.PolymorphicManager'> <class 'polymorphic.tests.One2OneRelatingModel'>")
         self.assertEqual(show_base_manager(One2OneRelatingModelDerived), "<class 'django.db.models.manager.Manager'> <class 'polymorphic.tests.One2OneRelatingModelDerived'>")
 
+
+    def test_instance_default_manager(self):
+        def show_default_manager(instance):
+            return "{0} {1}".format(
+                repr(type(instance._default_manager)),
+                repr(instance._default_manager.model)
+            )
+
+        plain_a = PlainA(field1='C1')
+        plain_b = PlainB(field2='C1')
+        plain_c = PlainC(field3='C1')
+
+        model_2a = Model2A(field1='C1')
+        model_2b = Model2B(field2='C1')
+        model_2c = Model2C(field3='C1')
+
+        self.assertEqual(show_default_manager(plain_a), "<class 'django.db.models.manager.Manager'> <class 'polymorphic.tests.PlainA'>")
+        self.assertEqual(show_default_manager(plain_b), "<class 'django.db.models.manager.Manager'> <class 'polymorphic.tests.PlainB'>")
+        self.assertEqual(show_default_manager(plain_c), "<class 'django.db.models.manager.Manager'> <class 'polymorphic.tests.PlainC'>")
+
+        self.assertEqual(show_default_manager(model_2a), "<class 'polymorphic.manager.PolymorphicManager'> <class 'polymorphic.tests.Model2A'>")
+        self.assertEqual(show_default_manager(model_2b), "<class 'polymorphic.manager.PolymorphicManager'> <class 'polymorphic.tests.Model2B'>")
+        self.assertEqual(show_default_manager(model_2c), "<class 'polymorphic.manager.PolymorphicManager'> <class 'polymorphic.tests.Model2C'>")
 
     def test_foreignkey_field(self):
         self.create_model2abcd()
@@ -655,13 +632,9 @@ class PolymorphicTests(TestCase):
         Enhance_Inherit.objects.create(field_b='b-inherit', field_p='p', field_i='i')
 
         qs = Enhance_Base.objects.all()
-        if django.VERSION[:2] > (1, 6):
-            self.assertEqual(repr(qs[0]), '<Enhance_Base: base_id (AutoField/pk) 1, field_b (CharField) "b-base">')
-            self.assertEqual(repr(qs[1]), '<Enhance_Inherit: base_id (AutoField/pk) 2, field_b (CharField) "b-inherit", id 1, field_p (CharField) "p", field_i (CharField) "i">')
-        else:
-            self.assertEqual(repr(qs[0]), '<Enhance_Base: id 1, field_b (CharField) "b-base">')
-            self.assertEqual(repr(qs[1]), '<Enhance_Inherit: id 2, field_b (CharField) "b-inherit", field_p (CharField) "p", field_i (CharField) "i">')
         self.assertEqual(len(qs), 2)
+        self.assertEqual(repr(qs[0]), '<Enhance_Base: base_id (AutoField/pk) 1, field_b (CharField) "b-base">')
+        self.assertEqual(repr(qs[1]), '<Enhance_Inherit: base_id (AutoField/pk) 2, field_b (CharField) "b-inherit", id 1, field_p (CharField) "p", field_i (CharField) "i">')
 
     def test_relation_base(self):
         # ForeignKey, ManyToManyField
@@ -819,6 +792,13 @@ class PolymorphicTests(TestCase):
         self.assertIsInstance(objects[0], ProxyModelA)
         self.assertIsInstance(objects[1], ProxyModelB)
 
+    def test_custom_pk(self):
+        CustomPkBase.objects.create(b='b')
+        CustomPkInherit.objects.create(b='b', i='i')
+        qs = CustomPkBase.objects.all()
+        self.assertEqual(len(qs), 2)
+        self.assertEqual(repr(qs[0]), '<CustomPkBase: id 1, b (CharField) "b">')
+        self.assertEqual(repr(qs[1]), '<CustomPkInherit: id 2, b (CharField) "b", custom_id (AutoField/pk) 1, i (CharField) "i">')
 
     def test_fix_getattribute(self):
         ### fixed issue in PolymorphicModel.__getattribute__: field name same as model name

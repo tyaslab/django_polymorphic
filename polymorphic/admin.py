@@ -1,6 +1,7 @@
 """
 ModelAdmin code to display polymorphic models.
 """
+import sys
 from django import forms
 from django.conf.urls import patterns, url
 from django.contrib import admin
@@ -26,6 +27,9 @@ try:
 except ImportError:
     def add_preserved_filters(context, form_url):
         return form_url
+
+if sys.version_info[0] >= 3:
+    long = int
 
 
 __all__ = (
@@ -271,6 +275,16 @@ class PolymorphicParentModelAdmin(admin.ModelAdmin):
         real_admin = self._get_real_admin(object_id)
         return real_admin.delete_view(request, object_id, extra_context)
 
+    def get_preserved_filters(self, request):
+        if '_changelist_filters' in request.GET:
+            request.GET = request.GET.copy()
+            filters = request.GET.get('_changelist_filters')
+            f = filters.split("&")
+            for x in f:
+                c = x.split('=')
+                request.GET[c[0]] = c[1]
+            del request.GET['_changelist_filters']
+        return super(PolymorphicParentModelAdmin, self).get_preserved_filters(request)
 
     def get_urls(self):
         """
@@ -313,7 +327,10 @@ class PolymorphicParentModelAdmin(admin.ModelAdmin):
             # See if the path started with an ID.
             try:
                 pos = path.find('/')
-                object_id = long(path[0:pos])
+                if pos == -1:
+                    object_id = long(path)
+                else:
+                    object_id = long(path[0:pos])
             except ValueError:
                 raise Http404("No ct_id parameter, unable to find admin subclass for path '{0}'.".format(path))
 
